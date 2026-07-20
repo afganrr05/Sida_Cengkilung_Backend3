@@ -7,24 +7,13 @@ const toNullIfEmpty = (value) => {
   return value;
 };
 
-const getAllKonten = async (filter = {}) => {
-  let query = `
-    SELECT k.*, kk.nama_kategori 
-    FROM tb_konten k
-    LEFT JOIN tb_kategori_konten kk ON k.id_kategori_konten = kk.id_kategori_konten
-    WHERE k.status_konten = 'published'
-  `;
-  const params = [];
+const getAllKonten = async () => {
 
-  if (filter.kategori) {
-    query += ' AND kk.nama_kategori = ?';
-    params.push(filter.kategori);
-  }
+    const [rows] = await pool.execute(
+        "SELECT * FROM tb_konten LIMIT 1"
+    );
 
-  query += ' ORDER BY k.tanggal_publikasi DESC';
-
-  const [rows] = await pool.execute(query, params);
-  return rows;
+    return rows;
 };
 
 const getKontenById = async (id) => {
