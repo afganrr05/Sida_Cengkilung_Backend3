@@ -66,6 +66,14 @@ app.use('/api/penduduk', pendudukRoutes);
 app.use('/api/surat', suratRoutes);
 
 // Health check
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'SIDA Cengkilung Backend',
+    health: '/api/health'
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.status(200).json({ 
     status: 'healthy',
@@ -106,16 +114,16 @@ app.use((req, res) => {
 
 const PORT = process.env.PORT || 5000;
 
-// Test koneksi database sebelum start server
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server berjalan di port ${PORT}`);
+  console.log(`Mode: ${process.env.NODE_ENV || 'development'}`);
+});
+
+// Test koneksi database setelah server siap, supaya Railway tidak mendapat 502 saat DB lambat.
 db.testConnection().then((connected) => {
   global.dbConnected = connected;
-  
-  app.listen(PORT, () => {
-    console.log(`🚀 Server berjalan di port ${PORT}`);
-    console.log(`📡 Mode: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`💾 Database: ${connected ? '✅ Terhubung' : '❌ Gagal terhubung'}`);
-  });
-}).catch(err => {
-  console.error('Fatal: Gagal koneksi database:', err.message);
-  process.exit(1);
+  console.log(`Database: ${connected ? 'Terhubung' : 'Gagal terhubung'}`);
+}).catch((err) => {
+  global.dbConnected = false;
+  console.error('Gagal koneksi database:', err.message);
 });
