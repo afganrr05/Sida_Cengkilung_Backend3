@@ -1,7 +1,13 @@
 const normalizeOrigin = (value = '') => String(value).trim().replace(/\/$/, '');
 
-const envAllowedOrigins = String(process.env.FRONTEND_URLS || '')
-  .split(',')
+const envAllowedOrigins = [
+  process.env.FRONTEND_URLS,
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGINS,
+  process.env.CORS_ORIGIN
+]
+  .filter(Boolean)
+  .flatMap((value) => String(value).split(','))
   .map((item) => normalizeOrigin(item))
   .filter(Boolean);
 
