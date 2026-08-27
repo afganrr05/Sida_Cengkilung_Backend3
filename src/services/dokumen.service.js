@@ -12,9 +12,17 @@ const getUploadBaseDir = () => {
 // PUBLIC - hanya untuk masyarakat yang login
 const getDokumenPublik = async () => {
   const [rows] = await pool.execute(`
-    SELECT * FROM tb_dokumen 
-    WHERE hak_akses = 'publik' AND status_dokumen = 'aktif'
-    ORDER BY tanggal_upload DESC
+    SELECT d.*, 
+           COALESCE(d.kategori, 
+             CASE 
+               WHEN d.jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                 THEN 'Dokumen Adat/Desa'
+               ELSE 'Surat'
+             END
+           ) as kategori
+    FROM tb_dokumen d
+    WHERE d.hak_akses = 'publik' AND d.status_dokumen = 'aktif'
+    ORDER BY d.tanggal_upload DESC
   `);
   
   return rows;
@@ -22,7 +30,14 @@ const getDokumenPublik = async () => {
 
 const getDokumenTerbatas = async (userId) => {
   const [rows] = await pool.execute(`
-    SELECT d.*
+    SELECT d.*,
+           COALESCE(d.kategori, 
+             CASE 
+               WHEN d.jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                 THEN 'Dokumen Adat/Desa'
+               ELSE 'Surat'
+             END
+           ) as kategori
     FROM tb_dokumen d
     WHERE d.hak_akses = 'terbatas' 
       AND d.status_dokumen = 'aktif'
@@ -34,7 +49,16 @@ const getDokumenTerbatas = async (userId) => {
 
 const getDokumenTerbatasById = async (id) => {
   const [rows] = await pool.execute(
-    `SELECT * FROM tb_dokumen WHERE id_dokumen = ? AND hak_akses = 'terbatas' AND status_dokumen = 'aktif'`,
+    `SELECT d.*, 
+            COALESCE(d.kategori, 
+              CASE 
+                WHEN d.jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                  THEN 'Dokumen Adat/Desa'
+                ELSE 'Surat'
+              END
+            ) as kategori
+     FROM tb_dokumen d 
+     WHERE d.id_dokumen = ? AND d.hak_akses = 'terbatas' AND d.status_dokumen = 'aktif'`,
     [id]
   );
 
@@ -121,6 +145,13 @@ const getPermohonanSaya = async (userId) => {
     SELECT pd.*, 
            d.judul_dokumen, 
            d.jenis_dokumen,
+           COALESCE(d.kategori, 
+             CASE 
+               WHEN d.jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                 THEN 'Dokumen Adat/Desa'
+               ELSE 'Surat'
+             END
+           ) as kategori,
            d.file_path as dokumen_file_path
     FROM tb_permohonan_dokumen pd
     LEFT JOIN tb_dokumen d ON pd.id_dokumen = d.id_dokumen
@@ -134,7 +165,15 @@ const getPermohonanSaya = async (userId) => {
 // ADMIN FUNCTIONS
 const getAllDokumenAdmin = async () => {
   const [rows] = await pool.execute(`
-    SELECT d.*, COALESCE(pd.jumlah_permohonan, 0) as jumlah_permohonan
+    SELECT d.*, 
+           COALESCE(d.kategori, 
+             CASE 
+               WHEN d.jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                 THEN 'Dokumen Adat/Desa'
+               ELSE 'Surat'
+             END
+           ) as kategori,
+           COALESCE(pd.jumlah_permohonan, 0) as jumlah_permohonan
     FROM tb_dokumen d
     LEFT JOIN (
       SELECT id_dokumen, COUNT(*) as jumlah_permohonan
@@ -143,6 +182,10 @@ const getAllDokumenAdmin = async () => {
     ) pd ON d.id_dokumen = pd.id_dokumen
     ORDER BY d.tanggal_upload DESC
   `);
+  
+  // Log untuk debugging
+  console.log('Data dokumen admin:', rows.map(r => ({ id: r.id_dokumen, judul: r.judul_dokumen, kategori: r.kategori, jenis: r.jenis_dokumen })));
+  
   return rows;
 };
 
@@ -151,6 +194,13 @@ const getAllPermohonanAdmin = async (status = null) => {
     SELECT pd.*, 
            d.judul_dokumen, 
            d.jenis_dokumen,
+           COALESCE(d.kategori, 
+             CASE 
+               WHEN d.jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                 THEN 'Dokumen Adat/Desa'
+               ELSE 'Surat'
+             END
+           ) as kategori,
            p.nama_lengkap,
            p.email
     FROM tb_permohonan_dokumen pd
@@ -193,6 +243,7 @@ const createDokumen = async (dokumenData, userId) => {
     judul_dokumen,
     deskripsi_dokumen,
     jenis_dokumen,
+    kategori, // Jangan beri default di sini, biarkan controller yang menentukan
     file_path,
     hak_akses = 'publik',
     status_dokumen = 'aktif'
@@ -202,27 +253,38 @@ const createDokumen = async (dokumenData, userId) => {
     throw new Error('Judul dan jenis dokumen wajib diisi');
   }
 
+  // Tentukan kategori: gunakan dari input atau tentukan berdasarkan jenis_dokumen
+  let finalKategori = kategori;
+  if (!finalKategori) {
+    // Tentukan kategori berdasarkan jenis_dokumen
+    const dokumenAdatTypes = ['Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya'];
+    finalKategori = dokumenAdatTypes.includes(jenis_dokumen) ? 'Dokumen Adat/Desa' : 'Surat';
+  }
+
   if (!file_path) {
     throw new Error('File dokumen wajib diupload');
   }
 
+  console.log('Creating dokumen with kategori:', finalKategori); // Debug
+
   const [result] = await pool.execute(
     `INSERT INTO tb_dokumen (
       id_pengguna, judul_dokumen, deskripsi_dokumen,
-      jenis_dokumen, file_path, hak_akses, status_dokumen, tanggal_upload
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())`,
+      jenis_dokumen, kategori, file_path, hak_akses, status_dokumen, tanggal_upload
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
     [
       userId,
       judul_dokumen,
       deskripsi_dokumen ?? null,
       jenis_dokumen,
+      finalKategori,
       file_path,
       hak_akses || 'publik',
       status_dokumen || 'aktif'
     ]
   );
 
-  return { id: result.insertId };
+  return { id: result.insertId, kategori: finalKategori };
 };
 
 const updateDokumen = async (id, dokumenData) => {
@@ -242,6 +304,12 @@ const updateDokumen = async (id, dokumenData) => {
   if (hasOwn('jenis_dokumen') && isDefined(dokumenData.jenis_dokumen)) {
     updateFields.push('jenis_dokumen = ?');
     values.push(dokumenData.jenis_dokumen);
+  }
+  // Update kategori - gunakan nilai yang dikirim
+  if (hasOwn('kategori') && isDefined(dokumenData.kategori) && dokumenData.kategori !== '') {
+    updateFields.push('kategori = ?');
+    values.push(dokumenData.kategori);
+    console.log('Updating kategori to:', dokumenData.kategori); // Debug
   }
   if (hasOwn('file_path') && isDefined(dokumenData.file_path)) {
     updateFields.push('file_path = ?');
@@ -263,6 +331,8 @@ const updateDokumen = async (id, dokumenData) => {
   values.push(id);
 
   const query = `UPDATE tb_dokumen SET ${updateFields.join(', ')} WHERE id_dokumen = ?`;
+  console.log('Update query:', query); // Debug
+  console.log('Update values:', values); // Debug
   
   const [result] = await pool.execute(query, values);
   
@@ -306,7 +376,16 @@ const deleteDokumen = async (id) => {
 
 const getDokumenById = async (id) => {
   const [rows] = await pool.execute(
-    'SELECT id_dokumen, judul_dokumen, file_path, hak_akses FROM tb_dokumen WHERE id_dokumen = ?',
+    `SELECT id_dokumen, judul_dokumen, file_path, hak_akses, 
+            COALESCE(kategori, 
+              CASE 
+                WHEN jenis_dokumen IN ('Awig-awig', 'Perarem', 'Peraturan Desa', 'Keputusan Paruman', 'Lainnya') 
+                  THEN 'Dokumen Adat/Desa'
+                ELSE 'Surat'
+              END
+            ) as kategori,
+            jenis_dokumen
+     FROM tb_dokumen WHERE id_dokumen = ?`,
     [id]
   );
 
