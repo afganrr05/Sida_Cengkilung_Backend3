@@ -145,8 +145,14 @@ const createDokumen = async (req, res) => {
   try {
     const dokumenData = {
       ...req.body,
-      deskripsi_dokumen: req.body.deskripsi_dokumen ?? null
+      deskripsi_dokumen: req.body.deskripsi_dokumen ?? null,
+      kategori: req.body.kategori ?? 'Surat' // Tambahkan default kategori
     };
+
+    // Validasi kategori
+    if (!dokumenData.kategori) {
+      return errorResponse(res, 'Kategori dokumen wajib diisi');
+    }
 
     if (!req.file) {
       return errorResponse(res, 'File dokumen wajib diupload');
@@ -164,7 +170,7 @@ const createDokumen = async (req, res) => {
     try {
       await db.pool.execute(
         'INSERT INTO tb_log_aktivitas (id_pengguna, aktivitas, detail) VALUES (?, ?, ?)',
-        [req.user.id, 'CREATE_DOKUMEN', `Membuat dokumen: ${dokumenData.judul_dokumen}`]
+        [req.user.id, 'CREATE_DOKUMEN', `Membuat dokumen: ${dokumenData.judul_dokumen} (Kategori: ${dokumenData.kategori})`]
       );
     } catch (logError) {
       console.warn('Log aktivitas gagal:', logError.message);
@@ -185,6 +191,14 @@ const updateDokumen = async (req, res) => {
 
     if (Object.prototype.hasOwnProperty.call(req.body, 'deskripsi_dokumen')) {
       dokumenData.deskripsi_dokumen = req.body.deskripsi_dokumen ?? null;
+    }
+
+    // Validasi kategori jika dikirim
+    if (Object.prototype.hasOwnProperty.call(req.body, 'kategori')) {
+      if (!req.body.kategori) {
+        return errorResponse(res, 'Kategori dokumen tidak boleh kosong');
+      }
+      dokumenData.kategori = req.body.kategori;
     }
 
     if (req.file) {
