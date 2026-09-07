@@ -15,9 +15,9 @@ const getUploadBaseDir = () => {
 // Get jenis surat aktif
 const getJenisSuratAktif = async () => {
   const [rows] = await pool.execute(
-    `SELECT id_jenis, nama_jenis, deskripsi, fields_config, upload_config, template_surat 
+    `SELECT id_jenis, kategori, nama_jenis, deskripsi, fields_config, upload_config, template_surat 
      FROM tb_jenis_surat 
-     WHERE status = 'aktif' 
+     WHERE status = 'aktif' AND kategori = 'Surat'
      ORDER BY id_jenis`
   );
   return rows;
@@ -81,10 +81,10 @@ const ajukanSurat = async (userId, idJenis, detailFields, lampiranFiles) => {
 // Get pengajuan by user
 const getPengajuanByUser = async (userId) => {
   const [rows] = await pool.execute(
-    `SELECT p.*, j.nama_jenis 
+    `SELECT p.*, j.id_jenis, j.kategori, j.nama_jenis 
      FROM tb_pengajuan_surat p
      JOIN tb_jenis_surat j ON p.id_jenis = j.id_jenis
-     WHERE p.id_pengguna = ?
+     WHERE p.id_pengguna = ? AND j.kategori = 'Surat'
      ORDER BY p.tanggal_pengajuan DESC`,
     [userId]
   );
@@ -104,12 +104,12 @@ const getPengajuanByUser = async (userId) => {
 // Get detail pengajuan
 const getDetailPengajuan = async (idPengajuan, userId) => {
   const [rows] = await pool.execute(
-    `SELECT p.*, j.nama_jenis, j.fields_config,
+    `SELECT p.*, j.id_jenis, j.kategori, j.nama_jenis, j.fields_config,
             u.nama_lengkap as pemohon_nama, u.email as pemohon_email
      FROM tb_pengajuan_surat p
      JOIN tb_jenis_surat j ON p.id_jenis = j.id_jenis
      JOIN tb_pengguna u ON p.id_pengguna = u.id_pengguna
-     WHERE p.id_pengajuan = ? AND p.id_pengguna = ?`,
+    WHERE p.id_pengajuan = ? AND p.id_pengguna = ? AND j.kategori = 'Surat'`,
     [idPengajuan, userId]
   );
   
