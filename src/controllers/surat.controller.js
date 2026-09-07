@@ -2,6 +2,15 @@ const suratService = require('../services/surat.service');
 const { successResponse, errorResponse } = require('../utils/response');
 const db = require('../config/db');
 
+const validateTemplateFile = (file) => {
+  if (!file) return;
+  const allowedExtensions = ['.pdf', '.doc', '.docx'];
+  const extension = require('path').extname(file.originalname).toLowerCase();
+  if (!allowedExtensions.includes(extension)) {
+    throw new Error('Format template tidak didukung. Gunakan PDF, DOC, atau DOCX');
+  }
+};
+
 // ==================== CONTROLLER UNTUK MASYARAKAT ====================
 
 // Get jenis surat yang aktif (untuk dropdown di masyarakat)
@@ -108,18 +117,21 @@ const getAllJenisSurat = async (req, res) => {
 // Create jenis surat baru
 const createJenisSurat = async (req, res) => {
   try {
-    const { nama_jenis, deskripsi, fields_config, upload_config, status } = req.body;
+    validateTemplateFile(req.file);
+    const { kategori, nama_jenis, deskripsi, fields_config, upload_config, status } = req.body;
     
     // Parse JSON jika string
     const fieldsConfig = typeof fields_config === 'string' ? JSON.parse(fields_config) : fields_config;
     const uploadConfig = typeof upload_config === 'string' ? JSON.parse(upload_config) : upload_config;
     
     const result = await suratService.createJenisSurat({
+      kategori,
       nama_jenis,
       deskripsi,
       fields_config: fieldsConfig,
       upload_config: uploadConfig,
-      status: status || 'aktif'
+      status: status || 'aktif',
+      template_surat: req.file
     });
     
     return successResponse(res, 'Jenis surat berhasil dibuat', result, 201);
@@ -131,18 +143,21 @@ const createJenisSurat = async (req, res) => {
 // Update jenis surat
 const updateJenisSurat = async (req, res) => {
   try {
+    validateTemplateFile(req.file);
     const { id } = req.params;
-    const { nama_jenis, deskripsi, fields_config, upload_config, status } = req.body;
+    const { kategori, nama_jenis, deskripsi, fields_config, upload_config, status } = req.body;
     
     const fieldsConfig = typeof fields_config === 'string' ? JSON.parse(fields_config) : fields_config;
     const uploadConfig = typeof upload_config === 'string' ? JSON.parse(upload_config) : upload_config;
     
     const result = await suratService.updateJenisSurat(id, {
+      kategori,
       nama_jenis,
       deskripsi,
       fields_config: fieldsConfig,
       upload_config: uploadConfig,
-      status
+      status,
+      template_surat: req.file
     });
     
     return successResponse(res, 'Jenis surat berhasil diperbarui', result);
@@ -219,6 +234,30 @@ const downloadSurat = async (req, res) => {
   }
 };
 
+// Download atau preview template jenis surat (admin)
+const downloadTemplateSurat = async (req, res) => {
+  try {
+    const filePath = await suratService.getTemplateFilePath(req.params.id);
+    if (!filePath) return errorResponse(res, 'Template surat belum tersedia', 404);
+
+    const path = require('path');
+    const fs = require('fs');
+    const normalizedPath = String(filePath).replace(/\\/g, '/');
+    const relativePath = normalizedPath.replace(/^\/+/, '');
+    const absoluteDirect = path.isAbsolute(filePath) ? filePath : null;
+    const absolutePrimary = path.join(__dirname, '..', '..', relativePath);
+    const absoluteLegacy = path.join(__dirname, '..', relativePath);
+    const absolutePath = absoluteDirect && fs.existsSync(absoluteDirect)
+      ? absoluteDirect
+      : fs.existsSync(absolutePrimary) ? absolutePrimary : absoluteLegacy;
+
+    if (!fs.existsSync(absolutePath)) return errorResponse(res, 'File template tidak ditemukan di server', 404);
+    res.download(absolutePath, path.basename(absolutePath));
+  } catch (error) {
+    return errorResponse(res, error.message);
+  }
+};
+
 module.exports = {
   // Masyarakat
   getJenisSuratAktif,
@@ -233,5 +272,6 @@ module.exports = {
   updateJenisSurat,
   deleteJenisSurat,
   updateStatusPengajuan,
-  downloadSurat
+  downloadSurat,
+  downloadTemplateSurat
 };
