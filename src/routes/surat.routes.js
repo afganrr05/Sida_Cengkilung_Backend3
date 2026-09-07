@@ -27,10 +27,10 @@ router.get('/admin/:id/detail', authMiddleware, roleMiddleware('admin'), suratCo
 router.get('/jenis', authMiddleware, roleMiddleware('admin'), suratController.getAllJenisSurat);
 
 // POST - Tambah jenis surat baru
-router.post('/jenis', authMiddleware, roleMiddleware('admin'), suratController.createJenisSurat);
+router.post('/jenis', authMiddleware, roleMiddleware('admin'), upload.single('template_surat'), suratController.createJenisSurat);
 
 // PUT - Update jenis surat
-router.put('/jenis/:id', authMiddleware, roleMiddleware('admin'), suratController.updateJenisSurat);
+router.put('/jenis/:id', authMiddleware, roleMiddleware('admin'), upload.single('template_surat'), suratController.updateJenisSurat);
 
 // DELETE - Hapus jenis surat
 router.delete('/jenis/:id', authMiddleware, roleMiddleware('admin'), suratController.deleteJenisSurat);
@@ -40,5 +40,8 @@ router.put('/admin/:id/status', authMiddleware, roleMiddleware('admin'), upload.
 
 // GET - Download file final surat
 router.get('/download/:id', authMiddleware, suratController.downloadSurat);
+
+// GET - Lihat/download template jenis surat
+router.get('/jenis/:id/template', authMiddleware, roleMiddleware('admin'), suratController.downloadTemplateSurat);
 
 module.exports = router;
