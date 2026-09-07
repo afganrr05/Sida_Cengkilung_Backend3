@@ -1,6 +1,7 @@
 const { pool } = require('../config/db');
 const fs = require('fs');
 const path = require('path');
+const { saveUploadedFile } = require('../middlewares/upload.middleware');
 
 const getUploadBaseDir = () => {
   if (process.env.UPLOAD_DIR) {
@@ -14,7 +15,7 @@ const getUploadBaseDir = () => {
 // Get jenis surat aktif
 const getJenisSuratAktif = async () => {
   const [rows] = await pool.execute(
-    `SELECT id_jenis, nama_jenis, deskripsi, fields_config, upload_config 
+    `SELECT id_jenis, nama_jenis, deskripsi, fields_config, upload_config, template_surat 
      FROM tb_jenis_surat 
      WHERE status = 'aktif' 
      ORDER BY id_jenis`
@@ -132,7 +133,7 @@ const getDetailPengajuan = async (idPengajuan, userId) => {
 // Get semua pengajuan (admin)
 const getAllPengajuanAdmin = async (filters = {}) => {
   let query = `
-    SELECT p.*, j.nama_jenis, u.nama_lengkap as pemohon_nama, u.email as pemohon_email
+    SELECT p.*, j.id_jenis, j.nama_jenis, j.template_surat, u.nama_lengkap as pemohon_nama, u.email as pemohon_email
     FROM tb_pengajuan_surat p
     JOIN tb_jenis_surat j ON p.id_jenis = j.id_jenis
     JOIN tb_pengguna u ON p.id_pengguna = u.id_pengguna
@@ -174,7 +175,7 @@ const getAllPengajuanAdmin = async (filters = {}) => {
 const getDetailPengajuanAdmin = async (idPengajuan) => {
   const [rows] = await pool.execute(
     `SELECT p.*, 
-            j.id_jenis, j.nama_jenis, j.fields_config,
+            j.id_jenis, j.nama_jenis, j.fields_config, j.template_surat,
             u.id_pengguna, u.nama_lengkap as pemohon_nama, u.email as pemohon_email
      FROM tb_pengajuan_surat p
      JOIN tb_jenis_surat j ON p.id_jenis = j.id_jenis
@@ -251,12 +252,13 @@ const getAllJenisSurat = async () => {
 
 // Create jenis surat
 const createJenisSurat = async (data) => {
-  const { nama_jenis, deskripsi, fields_config, upload_config, status } = data;
+  const { kategori, nama_jenis, deskripsi, fields_config, upload_config, status } = data;
+  const templatePath = data.template_surat ? await saveUploadedFile(data.template_surat, 'template_surat') : null;
   
   const [result] = await pool.execute(
-    `INSERT INTO tb_jenis_surat (nama_jenis, deskripsi, fields_config, upload_config, status) 
-     VALUES (?, ?, ?, ?, ?)`,
-    [nama_jenis, deskripsi, JSON.stringify(fields_config), JSON.stringify(upload_config), status]
+    `INSERT INTO tb_jenis_surat (kategori, nama_jenis, deskripsi, fields_config, upload_config, template_surat, status) 
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [kategori || 'Surat', nama_jenis, deskripsi, JSON.stringify(fields_config), JSON.stringify(upload_config), templatePath, status]
   );
   
   return { id: result.insertId };
@@ -264,16 +266,28 @@ const createJenisSurat = async (data) => {
 
 // Update jenis surat
 const updateJenisSurat = async (id, data) => {
-  const { nama_jenis, deskripsi, fields_config, upload_config, status } = data;
+  const { kategori, nama_jenis, deskripsi, fields_config, upload_config, status } = data;
+  const templatePath = data.template_surat ? await saveUploadedFile(data.template_surat, 'template_surat') : null;
+  const updateTemplate = templatePath ? ', template_surat = ?' : '';
   
   await pool.execute(
     `UPDATE tb_jenis_surat 
-     SET nama_jenis = ?, deskripsi = ?, fields_config = ?, upload_config = ?, status = ?, updated_at = NOW()
+     SET kategori = ?, nama_jenis = ?, deskripsi = ?, fields_config = ?, upload_config = ?, status = ?, updated_at = NOW()${updateTemplate}
      WHERE id_jenis = ?`,
-    [nama_jenis, deskripsi, JSON.stringify(fields_config), JSON.stringify(upload_config), status, id]
+    templatePath
+      ? [kategori || 'Surat', nama_jenis, deskripsi, JSON.stringify(fields_config), JSON.stringify(upload_config), status, templatePath, id]
+      : [kategori || 'Surat', nama_jenis, deskripsi, JSON.stringify(fields_config), JSON.stringify(upload_config), status, id]
   );
   
   return { id };
+};
+
+const getTemplateFilePath = async (idJenis) => {
+  const [rows] = await pool.execute(
+    'SELECT template_surat FROM tb_jenis_surat WHERE id_jenis = ?',
+    [idJenis]
+  );
+  return rows[0]?.template_surat || null;
 };
 
 // Delete jenis surat
@@ -342,6 +356,7 @@ module.exports = {
   getDetailPengajuan,
   getAllPengajuanAdmin,
   getDetailPengajuanAdmin,
+  getTemplateFilePath,
   getAllJenisSurat,
   createJenisSurat,
   updateJenisSurat,
